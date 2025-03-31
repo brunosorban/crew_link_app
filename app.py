@@ -1,118 +1,54 @@
 # Keep these 3 lines from https://stackoverflow.com/questions/76958817/streamlit-your-system-has-an-unsupported-version-of-sqlite3-chroma-requires-sq
 __import__('pysqlite3')
 import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3') 
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
+import os
 
 import streamlit as st
-from crewai import Agent, Task, Crew, Process
-from langchain_openai import ChatOpenAI
-from langchain_groq import ChatGroq
-from langchain_anthropic import ChatAnthropic
-# Removed dotenv import
-# from dotenv import load_dotenv
-import os
+from crewai import Agent, Crew, Process, Task
 from crewai_tools import *
+from langchain_anthropic import ChatAnthropic
+from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 
-# Removed load_dotenv()
-# load_dotenv()
+# Set environment variables
+os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
-# Set environment variables from Streamlit secrets at the very start
-if 'OPENAI_API_KEY' not in os.environ and 'OPENAI_API_KEY' in st.secrets:
-    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
 
-if 'OPENAI_API_BASE' not in os.environ and 'OPENAI_API_BASE' in st.secrets:
-    os.environ["OPENAI_API_BASE"] = st.secrets["OPENAI_API_BASE"]
-
-if 'LMSTUDIO_API_BASE' not in os.environ and 'LMSTUDIO_API_BASE' in st.secrets:
-    os.environ["LMSTUDIO_API_BASE"] = st.secrets["LMSTUDIO_API_BASE"]
-
-if 'GROQ_API_KEY' not in os.environ and 'GROQ_API_KEY' in st.secrets:
-    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
-
-if 'ANTHROPIC_API_KEY' not in os.environ and 'ANTHROPIC_API_KEY' in st.secrets:
-    os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
-
-# Define your LLM creation functions as before
-def create_lmstudio_llm(model, temperature):
-    api_base = os.getenv('LMSTUDIO_API_BASE')
-    os.environ["OPENAI_API_KEY"] = "lm-studio"
-    os.environ["OPENAI_API_BASE"] = api_base
-    if api_base:
-        return ChatOpenAI(openai_api_key='lm-studio', openai_api_base=api_base, temperature=temperature)
-    else:
-        raise ValueError("LM Studio API base not set in Streamlit secrets")
-
+# **Define your LLM creation functions**
 def create_openai_llm(model, temperature):
-    # Remove existing environment variables if any
-    safe_pop_env_var('OPENAI_API_KEY')
-    safe_pop_env_var('OPENAI_API_BASE')
-    
-    # Accessing API key and base from Streamlit secrets
-    api_key = st.secrets["OPENAI_API_KEY"]
-    api_base = st.secrets.get("OPENAI_API_BASE", 'https://api.openai.com/v1/')
-    
+    # Accessing API key and base from environment variables
+    api_key = os.getenv("OPENAI_API_KEY")
+    api_base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1/")
+
     if api_key:
         return ChatOpenAI(
             openai_api_key=api_key,
             openai_api_base=api_base,
             model_name=model,
-            temperature=temperature
+            temperature=temperature,
         )
     else:
-        raise ValueError("OpenAI API key not set in Streamlit secrets")
+        raise ValueError("OpenAI API key not set in environment variables")
 
-def create_groq_llm(model, temperature):
-    # Accessing GROQ API key from Streamlit secrets
-    api_key = st.secrets["GROQ_API_KEY"]
-    if api_key:
-        return ChatGroq(
-            groq_api_key=api_key,
-            model_name=model,
-            temperature=temperature
-        )
-    else:
-        raise ValueError("Groq API key not set in Streamlit secrets")
 
-def create_anthropic_llm(model, temperature):
-    # Accessing Anthropic API key from Streamlit secrets
-    api_key = st.secrets["ANTHROPIC_API_KEY"]
-    if api_key:
-        return ChatAnthropic(
-            anthropic_api_key=api_key,
-            model_name=model,
-            temperature=temperature
-        )
-    else:
-        raise ValueError("Anthropic API key not set in Streamlit secrets")
+LLM_CONFIG = {"OpenAI": {"create_llm": create_openai_llm}}
 
-def safe_pop_env_var(key):
-    try:
-        os.environ.pop(key)
-    except KeyError:
-        pass
-
-LLM_CONFIG = {
-    "OpenAI": {
-        "create_llm": create_openai_llm
-    },
-    "Groq": {
-        "create_llm": create_groq_llm
-    },
-    "LM Studio": {
-        "create_llm": create_lmstudio_llm
-    },
-    "Anthropic": {
-        "create_llm": create_anthropic_llm
-    }
-}
 
 def create_llm(provider_and_model, temperature=0.1):
-    provider, model = provider_and_model.split(": ")
+    try:
+        provider, model = provider_and_model.split(": ")
+    except ValueError:
+        raise ValueError("provider_and_model must be in the format 'Provider: Model'")
     create_llm_func = LLM_CONFIG.get(provider, {}).get("create_llm")
     if create_llm_func:
         return create_llm_func(model, temperature)
     else:
-        raise ValueError(f"LLM provider {provider} is not recognized or not supported")
+        raise ValueError(
+            f"LLM provider '{provider}' is not recognized or not supported"
+        )
+
 
 def load_agents():
     agents = [
@@ -123,7 +59,7 @@ def load_agents():
             allow_delegation=False,
             verbose=False,
             tools=[ScrapeWebsiteTool()],
-            llm=create_llm("OpenAI: gpt-4o-mini", 0.1)
+            llm=create_llm("OpenAI: gpt-4o-mini", 0.1),
         ),
         Agent(
             role="Redator de Notícias Sênior",
@@ -132,7 +68,7 @@ def load_agents():
             allow_delegation=False,
             verbose=False,
             tools=[],
-            llm=create_llm("OpenAI: gpt-4o-mini", 0.1)
+            llm=create_llm("OpenAI: gpt-4o-mini", 0.1),
         ),
         Agent(
             role="Editor Chefe de Notícias",
@@ -141,10 +77,11 @@ def load_agents():
             allow_delegation=False,
             verbose=False,
             tools=[],
-            llm=create_llm("OpenAI: gpt-4o-mini", 0.1)
-        )
+            llm=create_llm("OpenAI: gpt-4o-mini", 0.1),
+        ),
     ]
     return agents
+
 
 def load_tasks(agents):
     tasks = [
@@ -166,8 +103,12 @@ def load_tasks(agents):
                 "Conteúdo: <pontos principais ou resumo inicial>\n"
                 "Link: <URL do artigo>"
             ),
-            agent=next(agent for agent in agents if agent.role == "Estagiário de Varredura de Notícias"),
-            async_execution=False
+            agent=next(
+                agent
+                for agent in agents
+                if agent.role == "Estagiário de Varredura de Notícias"
+            ),
+            async_execution=False,
         ),
         Task(
             description=(
@@ -186,8 +127,10 @@ def load_tasks(agents):
                 "Palavras-chave: <lista de palavras-chave separadas por vírgula>\n"
                 "Link: <URL do artigo>"
             ),
-            agent=next(agent for agent in agents if agent.role == "Redator de Notícias Sênior"),
-            async_execution=False
+            agent=next(
+                agent for agent in agents if agent.role == "Redator de Notícias Sênior"
+            ),
+            async_execution=False,
         ),
         Task(
             description=(
@@ -203,48 +146,55 @@ def load_tasks(agents):
                 "Palavras-chave: <lista de palavras-chave separadas por vírgula>\n"
                 "Link: <URL do artigo>"
             ),
-            agent=next(agent for agent in agents if agent.role == "Editor Chefe de Notícias"),
-            async_execution=False
-        )
+            agent=next(
+                agent for agent in agents if agent.role == "Editor Chefe de Notícias"
+            ),
+            async_execution=False,
+        ),
     ]
     return tasks
+
 
 def main():
     st.title("Resumidor de links")
 
-    # Initialize agents and tasks after setting environment variables
+    # **Load Agents and Tasks**
     agents = load_agents()
     tasks = load_tasks(agents)
-    
+
     try:
         crew = Crew(
-            agents=agents, 
-            tasks=tasks, 
-            process="sequential", 
-            verbose=True, 
-            memory=True, 
-            cache=True, 
+            agents=agents,
+            tasks=tasks,
+            process="sequential",
+            verbose=True,
+            memory=True,
+            cache=True,
             max_rpm=1000,
         )
     except Exception as e:
         st.error(f"Error initializing Crew: {str(e)}")
-        return
+        st.stop()  # Stop further execution if Crew initialization fails
 
     links = st.text_input("Links")
 
-    placeholders = {
-        "links": links
-    }
+    # **Ensure Links Are Provided**
+    if not links:
+        st.info("Please enter one or more links to proceed.")
+        st.stop()
+
+    placeholders = {"links": links}
     with st.spinner("Running crew..."):
         try:
             result = crew.kickoff(inputs=placeholders)
             with st.expander("Final output", expanded=True):
-                if hasattr(result, 'raw'):
-                    st.write(result.raw)                
+                if hasattr(result, "raw"):
+                    st.write(result.raw)
             with st.expander("Full output", expanded=False):
                 st.write(result)
         except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
+            st.error(f"An error occurred during processing: {str(e)}")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
