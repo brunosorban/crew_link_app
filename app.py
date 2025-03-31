@@ -16,17 +16,29 @@ from crewai_tools import *
 # Removed load_dotenv()
 # load_dotenv()
 
+# Set environment variables from Streamlit secrets at the very start
+if 'OPENAI_API_KEY' not in os.environ and 'OPENAI_API_KEY' in st.secrets:
+    os.environ["OPENAI_API_KEY"] = st.secrets["OPENAI_API_KEY"]
+
+if 'OPENAI_API_BASE' not in os.environ and 'OPENAI_API_BASE' in st.secrets:
+    os.environ["OPENAI_API_BASE"] = st.secrets["OPENAI_API_BASE"]
+
+if 'LMSTUDIO_API_BASE' not in os.environ and 'LMSTUDIO_API_BASE' in st.secrets:
+    os.environ["LMSTUDIO_API_BASE"] = st.secrets["LMSTUDIO_API_BASE"]
+
+if 'GROQ_API_KEY' not in os.environ and 'GROQ_API_KEY' in st.secrets:
+    os.environ["GROQ_API_KEY"] = st.secrets["GROQ_API_KEY"]
+
+if 'ANTHROPIC_API_KEY' not in os.environ and 'ANTHROPIC_API_KEY' in st.secrets:
+    os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+
+# Define your LLM creation functions as before
 def create_lmstudio_llm(model, temperature):
-    # Accessing API base from Streamlit secrets
-    api_base = st.secrets["LMSTUDIO_API_BASE"]
+    api_base = os.getenv('LMSTUDIO_API_BASE')
     os.environ["OPENAI_API_KEY"] = "lm-studio"
     os.environ["OPENAI_API_BASE"] = api_base
     if api_base:
-        return ChatOpenAI(
-            openai_api_key='lm-studio',
-            openai_api_base=api_base,
-            temperature=temperature
-        )
+        return ChatOpenAI(openai_api_key='lm-studio', openai_api_base=api_base, temperature=temperature)
     else:
         raise ValueError("LM Studio API base not set in Streamlit secrets")
 
@@ -137,48 +149,60 @@ def load_agents():
 def load_tasks(agents):
     tasks = [
         Task(
-            description=("Você recebeu a seguinte lista de links de notícias {links}. Para cada link, utilize a ferramenta ScrapeWebTool\n"
-                         "para acessar o artigo e extrair as seguintes informações:\n"
-                         "  - Título da notícia\n"
-                         "  - Pontos principais ou resumo inicial\n"
-                         "  - Link original\n"
-                         "Retorne um esboço contendo essas informações no seguinte formato:\n"
-                         "Título: <título do artigo>\n"
-                         "Conteúdo: <pontos principais ou resumo inicial>\n"
-                         "Link: <URL do artigo>"),
-            expected_output=("Formato esperado:\n"
-                             "Título: <título do artigo>\n"
-                             "Conteúdo: <pontos principais ou resumo inicial>\n"
-                             "Link: <URL do artigo>"),
+            description=(
+                "Você recebeu a seguinte lista de links de notícias {links}. Para cada link, utilize a ferramenta ScrapeWebTool\n"
+                "para acessar o artigo e extrair as seguintes informações:\n"
+                "  - Título da notícia\n"
+                "  - Pontos principais ou resumo inicial\n"
+                "  - Link original\n"
+                "Retorne um esboço contendo essas informações no seguinte formato:\n"
+                "Título: <título do artigo>\n"
+                "Conteúdo: <pontos principais ou resumo inicial>\n"
+                "Link: <URL do artigo>"
+            ),
+            expected_output=(
+                "Formato esperado:\n"
+                "Título: <título do artigo>\n"
+                "Conteúdo: <pontos principais ou resumo inicial>\n"
+                "Link: <URL do artigo>"
+            ),
             agent=next(agent for agent in agents if agent.role == "Estagiário de Varredura de Notícias"),
             async_execution=False
         ),
         Task(
-            description=("Utilize o esboço inicial produzido pelo estagiário para elaborar um resumo final para cada notícia. \n"
-                         "Certifique-se de que o resumo contenha:\n"
-                         "  - Título do artigo\n"
-                         "  - Resumo final, conciso e informativo (em um único parágrafo)\n"
-                         "  - Lista de palavras-chave relevantes\n"
-                         "  - Link original do artigo\n"
-                         "Caso necessário, confirme detalhes utilizando a ferramenta docs_scrape_tool. Os links são {links}."),
-            expected_output=("Formato esperado:\n"
-                             "Título: <título do artigo>\n"
-                             "Resumo: <resumo final em um único parágrafo>\n"
-                             "Palavras-chave: <lista de palavras-chave separadas por vírgula>\n"
-                             "Link: <URL do artigo>"),
+            description=(
+                "Utilize o esboço inicial produzido pelo estagiário para elaborar um resumo final para cada notícia. \n"
+                "Certifique-se de que o resumo contenha:\n"
+                "  - Título do artigo\n"
+                "  - Resumo final, conciso e informativo (em um único parágrafo)\n"
+                "  - Lista de palavras-chave relevantes\n"
+                "  - Link original do artigo\n"
+                "Caso necessário, confirme detalhes utilizando a ferramenta docs_scrape_tool. Os links são {links}."
+            ),
+            expected_output=(
+                "Formato esperado:\n"
+                "Título: <título do artigo>\n"
+                "Resumo: <resumo final em um único parágrafo>\n"
+                "Palavras-chave: <lista de palavras-chave separadas por vírgula>\n"
+                "Link: <URL do artigo>"
+            ),
             agent=next(agent for agent in agents if agent.role == "Redator de Notícias Sênior"),
             async_execution=False
         ),
         Task(
-            description=("Revise o resumo final produzido pelo redator para cada notícia e assegure que:\n"
-                         "  - O título, resumo, palavras-chave e link estejam presentes e bem formatados\n"
-                         "  - O resumo esteja escrito em um único parágrafo, com clareza e concisão\n"
-                         "Realize as correções necessárias para que o conteúdo atenda ao padrão editorial."),
-            expected_output=("Formato final esperado:\n"
-                             "Título: <título do artigo>\n"
-                             "Resumo: <resumo final revisado, em um único parágrafo>\n"
-                             "Palavras-chave: <lista de palavras-chave separadas por vírgula>\n"
-                             "Link: <URL do artigo>"),
+            description=(
+                "Revise o resumo final produzido pelo redator para cada notícia e assegure que:\n"
+                "  - O título, resumo, palavras-chave e link estejam presentes e bem formatados\n"
+                "  - O resumo esteja escrito em um único parágrafo, com clareza e concisão\n"
+                "Realize as correções necessárias para que o conteúdo atenda ao padrão editorial."
+            ),
+            expected_output=(
+                "Formato final esperado:\n"
+                "Título: <título do artigo>\n"
+                "Resumo: <resumo final revisado, em um único parágrafo>\n"
+                "Palavras-chave: <lista de palavras-chave separadas por vírgula>\n"
+                "Link: <URL do artigo>"
+            ),
             agent=next(agent for agent in agents if agent.role == "Editor Chefe de Notícias"),
             async_execution=False
         )
@@ -188,17 +212,23 @@ def load_tasks(agents):
 def main():
     st.title("Resumidor de links")
 
+    # Initialize agents and tasks after setting environment variables
     agents = load_agents()
     tasks = load_tasks(agents)
-    crew = Crew(
-        agents=agents, 
-        tasks=tasks, 
-        process="sequential", 
-        verbose=True, 
-        memory=True, 
-        cache=True, 
-        max_rpm=1000,
-    )
+    
+    try:
+        crew = Crew(
+            agents=agents, 
+            tasks=tasks, 
+            process="sequential", 
+            verbose=True, 
+            memory=True, 
+            cache=True, 
+            max_rpm=1000,
+        )
+    except Exception as e:
+        st.error(f"Error initializing Crew: {str(e)}")
+        return
 
     links = st.text_input("Links")
 
